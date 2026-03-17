@@ -415,7 +415,7 @@
                     Analyze Document with AI
                 </button>
                 
-                <p class="api-note">Powered by Debansh. Extracts key risks, privacy issues, and consent concerns. <b>(v3.0)</b></p>
+                <p class="api-note">Powered by Debansh. Extracts key risks, privacy issues, and consent concerns. <b>(v3.1)</b></p>
                 <div id="error-box" class="error-message"></div>
             </section>
 
@@ -498,11 +498,9 @@
         // ==========================================
         // API CONFIGURATION (Protected against automated bots)
         // ==========================================
-        // To prevent GitHub from instantly revoking your key, split your new key into two halves.
-        // For example, if your key is "AIzaSy1234567890", put "AIzaSy12" in Part 1, and "34567890" in Part 2.
-        
-        const apiKeyPart1 = "AIzaSyDX0CH_dySH7eOZ"; 
-        const apiKeyPart2 = "TzehNNxX5W57RYRC7ZY";
+        // PASTE YOUR NEW KEY PARTS BELOW
+        const apiKeyPart1 = "AIzaSyBxUczk90t3Qvw"; 
+        const apiKeyPart2 = "sitoJWeRejpZ9HmtobNE";
         
         const apiKey = apiKeyPart1 + apiKeyPart2; 
 
@@ -560,59 +558,45 @@
         // AI INTEGRATION LOGIC (GEMINI API)
         // ==========================================
         async function fetchAnalysisFromAI(text) {
-            // Setup robust auto-fallback in case a model is deprecated
-            let currentModel = "gemini-2.5-flash"; 
-            let url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
-            
+            // Setup robust auto-fallback loop
+            const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-exp"];
+            let lastError = null;
+
             const systemPrompt = `
 You are an expert legal-tech AI assistant.
-
 Analyze the provided Terms & Conditions or Privacy Policy.
-
 Identify:
 1. Key legal risks (unfair terms, liability clauses, arbitration issues)
 2. Data privacy concerns (data sharing, tracking, third-party access)
 3. Consent issues (forced consent, dark patterns, lack of clarity)
 
 IMPORTANT:
-- Also evaluate from an Indian legal perspective (consumer protection, data protection principles).
-- Flag anything that may make consent legally questionable.
-
-OUTPUT:
-- Keep points simple and understandable for a normal user.
-- Be concise but insightful.
-
-Return:
-- keyRisks (2–4 points)
-- dataPrivacyIssues (2–4 points)
-- consentConcerns (2–4 points)
-- riskScore (1–10)
-- summary (1 line, strong conclusion)
+- Evaluate from an Indian legal perspective (DPDP Act, Consumer Protection).
+- Output strictly in JSON format.
 `;
 
-            const payload = {
-                contents: [{ parts: [{ text: text }] }],
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "OBJECT",
-                        properties: {
-                            keyRisks: { type: "ARRAY", items: { type: "STRING" }, description: "List of 2-4 major legal risks found." },
-                            dataPrivacyIssues: { type: "ARRAY", items: { type: "STRING" }, description: "List of 2-4 data privacy concerns." },
-                            consentConcerns: { type: "ARRAY", items: { type: "STRING" }, description: "List of 2-4 issues with how consent is forced or gathered." },
-                            riskScore: { type: "INTEGER", description: "A score from 1 to 10 based on user risk." },
-                            summary: { type: "STRING", description: "A concise 1-sentence summary of the overall risk." }
-                        },
-                        required: ["keyRisks", "dataPrivacyIssues", "consentConcerns", "riskScore", "summary"]
+            for (const currentModel of models) {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+                
+                const payload = {
+                    contents: [{ parts: [{ text: text }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                keyRisks: { type: "ARRAY", items: { type: "STRING" } },
+                                dataPrivacyIssues: { type: "ARRAY", items: { type: "STRING" } },
+                                consentConcerns: { type: "ARRAY", items: { type: "STRING" } },
+                                riskScore: { type: "INTEGER" },
+                                summary: { type: "STRING" }
+                            },
+                            required: ["keyRisks", "dataPrivacyIssues", "consentConcerns", "riskScore", "summary"]
+                        }
                     }
-                }
-            };
+                };
 
-            let retries = 5;
-            let delayMs = 1000;
-            
-            while (retries > 0) {
                 try {
                     const response = await fetch(url, {
                         method: 'POST',
@@ -622,53 +606,33 @@ Return:
 
                     if (!response.ok) {
                         const errorData = await response.json().catch(() => ({}));
-                        const errMsg = errorData.error?.message || response.statusText || "Unknown API Error";
-                        
-                        // ROBUST FALLBACK: If the model is not found, automatically switch to alternatives
-                        if (response.status === 404) {
-                            if (currentModel === "gemini-2.5-flash") {
-                                currentModel = "gemini-2.5-flash-preview-09-2025";
-                                url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
-                                throw new Error("Switching to preview model..."); // Triggers retry
-                            } else if (currentModel === "gemini-2.5-flash-preview-09-2025") {
-                                currentModel = "gemini-2.0-flash";
-                                url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
-                                throw new Error("Switching to standard model..."); // Triggers retry
-                            }
-                        }
-
-                        throw new Error(`Google AI Error: ${errMsg}`);
+                        const errMsg = errorData.error?.message || response.statusText;
+                        throw new Error(errMsg);
                     }
                     
                     const result = await response.json();
-                    
-                    if (!result.candidates || result.candidates.length === 0) {
-                        throw new Error("The AI returned an empty response. This may be due to safety filters.");
-                    }
-                    
                     const jsonText = result.candidates[0].content.parts[0].text;
                     return JSON.parse(jsonText);
 
                 } catch (err) {
-                    retries--;
-                    if (retries === 0) throw err;
-                    await new Promise(resolve => setTimeout(resolve, delayMs));
-                    delayMs *= 2; 
+                    lastError = err;
+                    console.warn(`Model ${currentModel} failed: ${err.message}. Trying next...`);
+                    continue; // Try the next model in the list
                 }
             }
+            
+            throw new Error(`Google AI Error: ${lastError.message}`);
         }
 
         // ==========================================
         // UI RENDERING UTILITIES
         // ==========================================
         function renderResults(data) {
-            // 1. Setup Elements
             const scoreElement = document.getElementById('risk-score');
             const meterFill = document.getElementById('risk-meter-fill');
             const scoreContainer = document.getElementById('score-card-container');
             const summaryElement = document.getElementById('score-summary');
             
-            // 2. Determine Color Palette based on score
             let themeColor, themeBg;
             if (data.riskScore <= 3) {
                 themeColor = 'var(--success)';
@@ -681,23 +645,19 @@ Return:
                 themeBg = 'var(--danger-bg)';
             }
 
-            // 3. Apply Texts and Colors
             scoreElement.textContent = data.riskScore;
             scoreElement.style.color = themeColor;
-            
-            // Apply top border color via custom property logic or inline style
-            scoreContainer.style.setProperty('--text-muted', themeColor); // Hacks the pseudo-element before color
+            scoreContainer.style.setProperty('--text-muted', themeColor);
             
             summaryElement.textContent = data.summary;
             summaryElement.style.backgroundColor = themeBg;
             summaryElement.style.color = themeColor;
 
-            // 4. Populate Lists
             const populateList = (elementId, items) => {
                 const ul = document.getElementById(elementId);
                 ul.innerHTML = ''; 
                 if (!items || items.length === 0) {
-                    ul.innerHTML = '<li>No significant issues found in this category.</li>';
+                    ul.innerHTML = '<li>No significant issues found.</li>';
                     return;
                 }
                 items.forEach(item => {
@@ -711,18 +671,12 @@ Return:
             populateList('list-data-privacy', data.dataPrivacyIssues);
             populateList('list-consent', data.consentConcerns);
 
-            // 5. Show Results and Animate Meter
             resultsSection.style.display = 'block';
-            
-            // Calculate percentage for the meter (ensure it doesn't exceed 100%)
             const scorePercentage = Math.min((data.riskScore / 10) * 100, 100);
             
-            // Small delay to allow CSS transition to trigger properly after display:block
             setTimeout(() => {
                 meterFill.style.width = `${scorePercentage}%`;
                 meterFill.style.backgroundColor = themeColor;
-                
-                // Scroll to view
                 resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 50);
         }
