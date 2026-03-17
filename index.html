@@ -415,7 +415,7 @@
                     Analyze Document with AI
                 </button>
                 
-                <p class="api-note">Powered by Debansh. Extracts key risks, privacy issues, and consent concerns. <b>(v2.0)</b></p>
+                <p class="api-note">Powered by Debansh. Extracts key risks, privacy issues, and consent concerns. <b>(v3.0)</b></p>
                 <div id="error-box" class="error-message"></div>
             </section>
 
@@ -554,9 +554,9 @@
         // AI INTEGRATION LOGIC (GEMINI API)
         // ==========================================
         async function fetchAnalysisFromAI(text) {
-            // FORCE the standard public model that works with all standard Google AI Studio API keys
-            const currentModel = "gemini-1.5-flash";
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+            // Setup robust auto-fallback in case a model is deprecated
+            let currentModel = "gemini-2.5-flash"; 
+            let url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
             
             const systemPrompt = `
 You are an expert legal-tech AI assistant.
@@ -617,6 +617,20 @@ Return:
                     if (!response.ok) {
                         const errorData = await response.json().catch(() => ({}));
                         const errMsg = errorData.error?.message || response.statusText || "Unknown API Error";
+                        
+                        // ROBUST FALLBACK: If the model is not found, automatically switch to alternatives
+                        if (response.status === 404) {
+                            if (currentModel === "gemini-2.5-flash") {
+                                currentModel = "gemini-2.5-flash-preview-09-2025";
+                                url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+                                throw new Error("Switching to preview model..."); // Triggers retry
+                            } else if (currentModel === "gemini-2.5-flash-preview-09-2025") {
+                                currentModel = "gemini-2.0-flash";
+                                url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+                                throw new Error("Switching to standard model..."); // Triggers retry
+                            }
+                        }
+
                         throw new Error(`Google AI Error: ${errMsg}`);
                     }
                     
