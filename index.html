@@ -415,7 +415,7 @@
                     Analyze Document with AI
                 </button>
                 
-                <p class="api-note">Powered by Debansh. Extracts key risks, privacy issues, and consent concerns.</p>
+                <p class="api-note">Powered by Debansh. Extracts key risks, privacy issues, and consent concerns. <b>(v2.0)</b></p>
                 <div id="error-box" class="error-message"></div>
             </section>
 
@@ -554,9 +554,9 @@
         // AI INTEGRATION LOGIC (GEMINI API)
         // ==========================================
         async function fetchAnalysisFromAI(text) {
-            // By default try to use the preview model, but we'll fall back to standard if it fails
-            let currentModel = "gemini-2.5-flash-preview-09-2025";
-            let url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+            // FORCE the standard public model that works with all standard Google AI Studio API keys
+            const currentModel = "gemini-1.5-flash";
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
             
             const systemPrompt = `
 You are an expert legal-tech AI assistant.
@@ -605,7 +605,6 @@ Return:
 
             let retries = 5;
             let delayMs = 1000;
-            let lastErrorMessage = "";
             
             while (retries > 0) {
                 try {
@@ -618,16 +617,7 @@ Return:
                     if (!response.ok) {
                         const errorData = await response.json().catch(() => ({}));
                         const errMsg = errorData.error?.message || response.statusText || "Unknown API Error";
-                        lastErrorMessage = errMsg;
-                        
-                        // FALLBACK FIX: If the public API key cannot find the preview model, switch to the standard model
-                        if (response.status === 404 && currentModel === "gemini-2.5-flash-preview-09-2025") {
-                            currentModel = "gemini-1.5-flash"; // Switch to widely supported model
-                            url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
-                            throw new Error("Switching to standard public model..."); // This throw triggers a retry!
-                        }
-
-                        throw new Error(`Error ${response.status}: ${errMsg}`);
+                        throw new Error(`Google AI Error: ${errMsg}`);
                     }
                     
                     const result = await response.json();
@@ -641,7 +631,7 @@ Return:
 
                 } catch (err) {
                     retries--;
-                    if (retries === 0) throw new Error(lastErrorMessage || err.message);
+                    if (retries === 0) throw err;
                     await new Promise(resolve => setTimeout(resolve, delayMs));
                     delayMs *= 2; 
                 }
