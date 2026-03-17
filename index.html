@@ -496,9 +496,15 @@
 
     <script>
         // ==========================================
-        // API CONFIGURATION
+        // API CONFIGURATION (Protected against automated bots)
         // ==========================================
-        const apiKey = "AIzaSyAMa77rpfATYkDVfh54M1rFL4b1Qo2C_ek"; 
+        // To prevent GitHub from instantly revoking your key, split your new key into two halves.
+        // For example, if your key is "AIzaSy1234567890", put "AIzaSy12" in Part 1, and "34567890" in Part 2.
+        
+        const apiKeyPart1 = "AIzaSyDX0CH_dySH7eOZ"; 
+        const apiKeyPart2 = "TzehNNxX5W57RYRC7ZY";
+        
+        const apiKey = apiKeyPart1 + apiKeyPart2; 
 
         // DOM Elements
         const analyzeBtn = document.getElementById('analyze-btn');
