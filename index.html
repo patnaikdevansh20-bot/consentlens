@@ -368,10 +368,10 @@
         .error-message {
             background-color: var(--danger-bg);
             color: var(--danger);
-            padding: 1rem;
+            padding: 1.5rem;
             border-radius: var(--border-radius-md);
             margin-top: 1.5rem;
-            text-align: center;
+            text-align: left;
             display: none;
             font-weight: 500;
             border: 1px solid #fca5a5;
@@ -498,8 +498,6 @@
         // ==========================================
         // API CONFIGURATION
         // ==========================================
-        // The execution environment provides the key at runtime automatically.
-        // To use locally, place your Gemini API key between the quotes.
         const apiKey = "AIzaSyAMa77rpfATYkDVfh54M1rFL4b1Qo2C_ek"; 
 
         // DOM Elements
@@ -525,9 +523,8 @@
             resultsSection.style.display = 'none';
             loadingSection.style.display = 'block';
             analyzeBtn.disabled = true;
-            analyzeBtn.innerHTML = "Analyzing..."; // Change button text
+            analyzeBtn.innerHTML = "Analyzing...";
 
-            // Reset Meter width so it animates from 0 again
             document.getElementById('risk-meter-fill').style.width = '0%';
 
             try {
@@ -539,11 +536,10 @@
 
             } catch (error) {
                 console.error("Analysis Error:", error);
-                showError("API Error: Unable to complete analysis. If running locally, please ensure your API key is correctly added.");
+                showError(`<b>Oops! Something went wrong:</b><br><br>${error.message}`);
             } finally {
                 loadingSection.style.display = 'none';
                 analyzeBtn.disabled = false;
-                // Restore button content
                 analyzeBtn.innerHTML = `
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="11" cy="11" r="8"></circle>
@@ -558,7 +554,9 @@
         // AI INTEGRATION LOGIC (GEMINI API)
         // ==========================================
         async function fetchAnalysisFromAI(text) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            // By default try to use the preview model, but we'll fall back to standard if it fails
+            let currentModel = "gemini-2.5-flash-preview-09-2025";
+            let url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
             
             const systemPrompt = `
 You are an expert legal-tech AI assistant.
@@ -607,6 +605,7 @@ Return:
 
             let retries = 5;
             let delayMs = 1000;
+            let lastErrorMessage = "";
             
             while (retries > 0) {
                 try {
@@ -616,15 +615,33 @@ Return:
                         body: JSON.stringify(payload)
                     });
 
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        const errMsg = errorData.error?.message || response.statusText || "Unknown API Error";
+                        lastErrorMessage = errMsg;
+                        
+                        // FALLBACK FIX: If the public API key cannot find the preview model, switch to the standard model
+                        if (response.status === 404 && currentModel === "gemini-2.5-flash-preview-09-2025") {
+                            currentModel = "gemini-1.5-flash"; // Switch to widely supported model
+                            url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+                            throw new Error("Switching to standard public model..."); // This throw triggers a retry!
+                        }
+
+                        throw new Error(`Error ${response.status}: ${errMsg}`);
+                    }
                     
                     const result = await response.json();
+                    
+                    if (!result.candidates || result.candidates.length === 0) {
+                        throw new Error("The AI returned an empty response. This may be due to safety filters.");
+                    }
+                    
                     const jsonText = result.candidates[0].content.parts[0].text;
                     return JSON.parse(jsonText);
 
                 } catch (err) {
                     retries--;
-                    if (retries === 0) throw err;
+                    if (retries === 0) throw new Error(lastErrorMessage || err.message);
                     await new Promise(resolve => setTimeout(resolve, delayMs));
                     delayMs *= 2; 
                 }
@@ -701,7 +718,7 @@ Return:
         }
 
         function showError(message) {
-            errorBox.textContent = message;
+            errorBox.innerHTML = message;
             errorBox.style.display = 'block';
         }
     </script>
